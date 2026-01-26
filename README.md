@@ -22,3 +22,10 @@ build executable using: <br>
 # Before doing anything
 
 make sure to run from venv or using interpreter after doing ```pip install -r requirements.txt```
+
+
+<br><br><br>
+
+# Troubleshooting
+
+* if download executable not working on mac run ```xattr -cr YouTubeAdSkipper.app```
