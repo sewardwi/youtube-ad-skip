@@ -17,7 +17,7 @@ import sys
 import platform
 
 APP_NAME = "YouTubeAdSkipper"
-SCRIPT = "youtube_skipper_native.py"
+SCRIPT = "youtube-skipper-native.py"
 
 
 def build():

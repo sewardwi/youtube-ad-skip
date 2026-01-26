@@ -35,7 +35,7 @@ jobs:
         run: |
           pyinstaller --onefile --windowed --name YouTubeAdSkipper \
             --add-data "skip_button.png:." \
-            youtube_skipper_native.py
+            youtube-skipper-native.py
           cd dist && zip -r ../YouTubeAdSkipper-macOS.zip YouTubeAdSkipper.app
 
       - name: Build with PyInstaller (Windows)
@@ -43,7 +43,7 @@ jobs:
         run: |
           pyinstaller --onefile --name YouTubeAdSkipper `
             --add-data "skip_button.png;." `
-            youtube_skipper_native.py
+            youtube-skipper-native.py
 
       - name: Upload macOS artifact
         if: matrix.os == 'macos-latest'

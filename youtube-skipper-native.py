@@ -3,7 +3,7 @@ YouTube Ad Skipper - Native Mouse Click Version
 Runs in background and clicks the skip button using real mouse input.
 
 Install: pip install pyautogui pillow opencv-python
-Run: python youtube_skipper_native.py
+Run: python youtube-skipper-native.py
 
 Setup:
 1. Go to YouTube and wait for an ad with a skip button
