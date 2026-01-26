@@ -2,7 +2,7 @@
 YouTube Ad Skipper - Native Mouse Click Version
 Runs in background and clicks the skip button using real mouse input.
 
-Install: pip install pyautogui pillow opencv-python
+Install: pip install -r requirements.txt
 Run: python youtube-skipper-native.py
 
 Setup:
@@ -17,9 +17,16 @@ import pyautogui
 import time
 import sys
 import os
+import threading
 from PIL import ImageGrab
 import cv2
 import numpy as np
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout,
+    QHBoxLayout, QLabel, QPushButton
+)
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtGui import QFont
 
 pyautogui.PAUSE = 0.1
 pyautogui.FAILSAFE = True
@@ -28,9 +35,7 @@ pyautogui.FAILSAFE = True
 def get_resource_path(filename):
     """Get path to resource, works for dev and PyInstaller."""
     if getattr(sys, '_MEIPASS', None):
-        # Running as bundled executable
         return os.path.join(sys._MEIPASS, filename)
-    # Running as script - check same directory as script
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
 
@@ -65,15 +70,13 @@ def find_skip_button(scale):
             center_x = max_loc[0] + w // 2
             center_y = max_loc[1] + h // 2
 
-            # Adjust for display scaling
             screen_x = int(center_x / scale)
             screen_y = int(center_y / scale)
 
-            print(f'[Ad Skipper] Found button at ({screen_x}, {screen_y}) confidence: {max_val:.2f}')
-            return (screen_x, screen_y)
+            return (screen_x, screen_y, max_val)
 
-    except Exception as e:
-        print(f'[Ad Skipper] Error: {e}')
+    except Exception:
+        pass
 
     return None
 
@@ -81,41 +84,170 @@ def find_skip_button(scale):
 def click_at(x, y):
     """Perform a real mouse click at coordinates."""
     pyautogui.click(x, y)
-    print(f'[Ad Skipper] Clicked at ({x}, {y})')
+
+
+class SignalEmitter(QObject):
+    """Helper class to emit signals from worker thread."""
+    update_status = Signal(str, int)
+    stop_requested = Signal()
+
+
+class YouTubeAdSkipper(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.running = False
+        self.thread = None
+        self.scale = None
+        self.clicks_count = 0
+        self.signals = SignalEmitter()
+
+        self.signals.update_status.connect(self._on_status_update)
+        self.signals.stop_requested.connect(self._stop)
+
+        self.image_found = os.path.exists(SKIP_BUTTON_IMAGE)
+
+        self._setup_ui()
+        self._center_window()
+
+    def _setup_ui(self):
+        self.setWindowTitle("YouTube Ad Skipper")
+        self.setFixedSize(300, 220)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        # Title
+        title = QLabel("YouTube Ad Skipper")
+        title.setFont(QFont("Helvetica", 18, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        layout.addSpacing(10)
+
+        # Status row
+        status_layout = QHBoxLayout()
+        status_layout.setAlignment(Qt.AlignCenter)
+
+        status_text = QLabel("Status:")
+        status_layout.addWidget(status_text)
+
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet("color: gray; font-size: 16px;")
+        status_layout.addWidget(self.status_dot)
+
+        self.status_label = QLabel("Stopped")
+        self.status_label.setStyleSheet("color: gray;")
+        status_layout.addWidget(self.status_label)
+
+        layout.addLayout(status_layout)
+
+        # Info label
+        self.info_label = QLabel("")
+        self.info_label.setStyleSheet("color: gray; font-size: 12px;")
+        self.info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.info_label)
+
+        # Counter
+        self.counter_label = QLabel("Ads skipped: 0")
+        self.counter_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.counter_label)
+
+        layout.addSpacing(5)
+
+        # Toggle button
+        self.toggle_btn = QPushButton("Start")
+        self.toggle_btn.setFixedHeight(35)
+        self.toggle_btn.clicked.connect(self._toggle)
+        layout.addWidget(self.toggle_btn)
+
+        # Warning if image not found
+        if not self.image_found:
+            self.toggle_btn.setEnabled(False)
+            warning = QLabel("skip_button.png not found!\nSee setup instructions.")
+            warning.setStyleSheet("color: red;")
+            warning.setAlignment(Qt.AlignCenter)
+            layout.addWidget(warning)
+
+        # Help text
+        help_label = QLabel("Move mouse to top-left corner to emergency stop")
+        help_label.setStyleSheet("color: gray; font-size: 10px;")
+        help_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(help_label)
+
+        layout.addStretch()
+
+    def _center_window(self):
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - self.width()) // 2
+        y = (screen.height() - self.height()) // 2
+        self.move(x, y)
+
+    def _toggle(self):
+        if self.running:
+            self._stop()
+        else:
+            self._start()
+
+    def _start(self):
+        self.running = True
+        self.toggle_btn.setText("Stop")
+        self.status_label.setText("Running")
+        self.status_label.setStyleSheet("color: #22c55e;")
+        self.status_dot.setStyleSheet("color: #22c55e; font-size: 16px;")
+
+        if self.scale is None:
+            self.scale = get_display_scaling()
+
+        self.thread = threading.Thread(target=self._skipper_loop, daemon=True)
+        self.thread.start()
+
+    def _stop(self):
+        self.running = False
+        self.toggle_btn.setText("Start")
+        self.status_label.setText("Stopped")
+        self.status_label.setStyleSheet("color: gray;")
+        self.status_dot.setStyleSheet("color: gray; font-size: 16px;")
+        self.info_label.setText("")
+
+    def _skipper_loop(self):
+        while self.running:
+            try:
+                result = find_skip_button(self.scale)
+
+                if result:
+                    x, y, confidence = result
+                    click_at(x, y)
+                    self.clicks_count += 1
+                    self.signals.update_status.emit(f"Clicked! ({confidence:.0%} match)", self.clicks_count)
+                    time.sleep(2)
+                else:
+                    self.signals.update_status.emit("Scanning...", self.clicks_count)
+                    time.sleep(0.5)
+
+            except pyautogui.FailSafeException:
+                self.signals.update_status.emit("Failsafe triggered", self.clicks_count)
+                self.signals.stop_requested.emit()
+                break
+            except Exception:
+                time.sleep(0.5)
+
+    def _on_status_update(self, status, count):
+        self.info_label.setText(status)
+        self.counter_label.setText(f"Ads skipped: {count}")
+
+    def closeEvent(self, event):
+        self.running = False
+        event.accept()
 
 
 def main():
-    if not os.path.exists(SKIP_BUTTON_IMAGE):
-        print(f'[Ad Skipper] ERROR: {SKIP_BUTTON_IMAGE} not found!')
-        print()
-        print('Setup instructions:')
-        print('1. Go to YouTube and wait for an ad with a skip button')
-        print('2. Screenshot JUST the skip button (crop it tightly)')
-        print(f'3. Save as "{SKIP_BUTTON_IMAGE}" in this folder')
-        sys.exit(1)
-
-    scale = get_display_scaling()
-    print(f'[Ad Skipper] Detected display scaling: {scale}x')
-    print('[Ad Skipper] Running...')
-    print('[Ad Skipper] Move mouse to top-left corner to stop')
-    print()
-
-    while True:
-        try:
-            pos = find_skip_button(scale)
-
-            if pos:
-                click_at(pos[0], pos[1])
-                time.sleep(2)
-            else:
-                time.sleep(0.5)
-
-        except pyautogui.FailSafeException:
-            print('\n[Ad Skipper] Failsafe triggered - exiting.')
-            sys.exit(0)
-        except KeyboardInterrupt:
-            print('\n[Ad Skipper] Stopped.')
-            sys.exit(0)
+    app = QApplication(sys.argv)
+    window = YouTubeAdSkipper()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':

@@ -38,10 +38,9 @@ def build():
         cmd.extend(["--add-data", "skip_button.png;."])
     else:
         cmd.extend(["--add-data", "skip_button.png:."])
-    
-    # macOS: create .app bundle
-    if current_os == "Darwin":
-        cmd.append("--windowed")
+
+    # GUI app: hide console window
+    cmd.append("--windowed")
     
     cmd.append(SCRIPT)
     

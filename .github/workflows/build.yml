@@ -41,7 +41,7 @@ jobs:
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --onefile --name YouTubeAdSkipper `
+          pyinstaller --onefile --windowed --name YouTubeAdSkipper `
             --add-data "skip_button.png;." `
             youtube-skipper-native.py
 
