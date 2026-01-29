@@ -18,6 +18,7 @@ import time
 import sys
 import os
 import threading
+import platform
 from PIL import ImageGrab
 import cv2
 import numpy as np
@@ -27,6 +28,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtGui import QFont
+
+# Windows DPI awareness
+if platform.system() == "Windows":
+    try:
+        from ctypes import windll
+        windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except:
+        pass
 
 pyautogui.PAUSE = 0.1
 pyautogui.FAILSAFE = True
@@ -44,6 +53,11 @@ SKIP_BUTTON_IMAGE = get_resource_path('skip_button.png')
 
 def get_display_scaling():
     """Detect display scaling factor (Retina/HiDPI support)."""
+    # On Windows with DPI awareness, pyautogui and PIL use the same scale
+    if platform.system() == "Windows":
+        return 1.0
+
+    # macOS Retina display detection
     screenshot = ImageGrab.grab()
     screenshot_width = screenshot.size[0]
     screen_width = pyautogui.size()[0]

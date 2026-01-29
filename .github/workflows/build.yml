@@ -44,6 +44,7 @@ jobs:
         run: |
           pyinstaller --onefile --windowed --name YouTubeAdSkipper `
             --add-data "skip_button.png;." `
+            --collect-all PySide6 `
             youtube-skipper-native.py
 
       - name: Upload macOS artifact

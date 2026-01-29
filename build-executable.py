@@ -32,7 +32,7 @@ def build():
         "--onefile",
         "--name", APP_NAME,
     ]
-    
+
     # Add the image file with correct path separator
     if current_os == "Windows":
         cmd.extend(["--add-data", "skip_button.png;."])
@@ -41,6 +41,9 @@ def build():
 
     # GUI app: hide console window
     cmd.append("--windowed")
+
+    # Include all PySide6 dependencies
+    cmd.extend(["--collect-all", "PySide6"])
     
     cmd.append(SCRIPT)
     
