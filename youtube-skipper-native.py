@@ -51,43 +51,59 @@ def get_resource_path(filename):
 SKIP_BUTTON_IMAGE = get_resource_path('skip_button.png')
 
 
-def get_display_scaling():
-    """Detect display scaling factor (Retina/HiDPI support)."""
-    # On Windows with DPI awareness, pyautogui and PIL use the same scale
-    if platform.system() == "Windows":
-        return 1.0
-
-    # macOS Retina display detection
-    screenshot = ImageGrab.grab()
-    screenshot_width = screenshot.size[0]
-    screen_width = pyautogui.size()[0]
-    scale = screenshot_width / screen_width
-    return scale
-
-
-def find_skip_button(scale):
-    """Locate the skip button on screen using OpenCV template matching."""
+def find_skip_button():
+    """Locate the skip button on all screens using OpenCV template matching."""
     try:
-        screenshot = ImageGrab.grab()
+        # Capture all screens
+        try:
+            screenshot = ImageGrab.grab(all_screens=True)
+        except:
+            screenshot = ImageGrab.grab()
+
         screenshot_np = np.array(screenshot)
         screenshot_gray = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
 
+        # Load template
         template = cv2.imread(SKIP_BUTTON_IMAGE, cv2.IMREAD_GRAYSCALE)
         if template is None:
             return None
 
-        result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        # Try multiple scales for different DPI
+        best_match = None
+        best_confidence = 0
 
-        if max_val >= 0.7:
-            h, w = template.shape
-            center_x = max_loc[0] + w // 2
-            center_y = max_loc[1] + h // 2
+        for scale in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]:
+            if scale != 1.0:
+                width = int(template.shape[1] * scale)
+                height = int(template.shape[0] * scale)
+                if width < 10 or height < 10:
+                    continue
+                scaled_template = cv2.resize(template, (width, height))
+            else:
+                scaled_template = template
 
-            screen_x = int(center_x / scale)
-            screen_y = int(center_y / scale)
+            result = cv2.matchTemplate(screenshot_gray, scaled_template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-            return (screen_x, screen_y, max_val)
+            if max_val > best_confidence:
+                best_confidence = max_val
+                h, w = scaled_template.shape
+                center_x = max_loc[0] + w // 2
+                center_y = max_loc[1] + h // 2
+                best_match = (center_x, center_y)
+
+        if best_match and best_confidence >= 0.6:
+            # Convert screenshot pixels to screen coordinates
+            # Get the screenshot and screen sizes
+            screenshot_width = screenshot.size[0]
+            screen_size = pyautogui.size()
+            scale_factor = screenshot_width / screen_size[0]
+
+            # Convert to screen coordinates
+            screen_x = int(best_match[0] / scale_factor)
+            screen_y = int(best_match[1] / scale_factor)
+
+            return (screen_x, screen_y, best_confidence)
 
     except Exception:
         pass
@@ -111,7 +127,6 @@ class YouTubeAdSkipper(QMainWindow):
         super().__init__()
         self.running = False
         self.thread = None
-        self.scale = None
         self.clicks_count = 0
         self.signals = SignalEmitter()
 
@@ -185,12 +200,6 @@ class YouTubeAdSkipper(QMainWindow):
             warning.setAlignment(Qt.AlignCenter)
             layout.addWidget(warning)
 
-        # Help text
-        help_label = QLabel("Move mouse to top-left corner to emergency stop")
-        help_label.setStyleSheet("color: gray; font-size: 10px;")
-        help_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(help_label)
-
         layout.addStretch()
 
     def _center_window(self):
@@ -212,9 +221,6 @@ class YouTubeAdSkipper(QMainWindow):
         self.status_label.setStyleSheet("color: #22c55e;")
         self.status_dot.setStyleSheet("color: #22c55e; font-size: 16px;")
 
-        if self.scale is None:
-            self.scale = get_display_scaling()
-
         self.thread = threading.Thread(target=self._skipper_loop, daemon=True)
         self.thread.start()
 
@@ -229,7 +235,7 @@ class YouTubeAdSkipper(QMainWindow):
     def _skipper_loop(self):
         while self.running:
             try:
-                result = find_skip_button(self.scale)
+                result = find_skip_button()
 
                 if result:
                     x, y, confidence = result
